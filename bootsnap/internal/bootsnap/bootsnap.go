@@ -2,26 +2,65 @@ package bootsnap
 
 import (
 	"fmt"
-	"log"
 	"os"
-	"os/exec"
+	"slices"
 	"strings"
-	"syscall"
 
-	"golang.org/x/sys/unix"
+	"github.com/kevwargo/bootsnap/internal/btrfs"
+	"github.com/spf13/cobra"
 )
 
-func run(mountpoint string, kernelParams []string) error {
+func Execute() error {
+	var (
+		force      bool
+		mountpoint string
+	)
+
+	cmd := &cobra.Command{
+		Use:           name,
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return execute(mountpoint, force)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force bootsnap menu even without the appropriate kernel param")
+	cmd.Flags().StringVarP(&mountpoint, "mountpoint", "m", defaultMountpoint, "Mountpoint for BTRFS pool")
+
+	return cmd.Execute()
+}
+
+func readKernelParams() ([]string, error) {
+	data, err := os.ReadFile("/proc/cmdline")
+	if err != nil {
+		return nil, err
+	}
+
+	return strings.Split(string(data), " "), nil
+}
+
+func execute(mountpoint string, force bool) error {
+	kernelParams, err := readKernelParams()
+	if err != nil {
+		return err
+	}
+
+	if !force && !slices.Contains(kernelParams, name) {
+		return nil
+	}
+
 	rootDev, err := findRootDev(kernelParams)
 	if err != nil {
 		return err
 	}
 
-	if err = mount(rootDev, mountpoint); err != nil {
+	pool, err := btrfs.Mount(rootDev, mountpoint)
+	if err != nil {
 		return err
 	}
 
-	return nil
+	return runMenu(pool)
 }
 
 func findRootDev(kernelParams []string) (string, error) {
@@ -34,46 +73,8 @@ func findRootDev(kernelParams []string) (string, error) {
 	return "", fmt.Errorf("%q* kernel param not found", rootParam)
 }
 
-func mount(rootDev, mountpoint string) error {
-	if isBtrfsSubvol(mountpoint) {
-		return nil
-	}
-
-	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
-		return fmt.Errorf("creating mountpoint %q: %w", mountpoint, err)
-	}
-
-	cmd := exec.Command("mount", "-t", "btrfs", rootDev, mountpoint)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	log.Println(cmd)
-
-	return cmd.Run()
-}
-
-func isBtrfsSubvol(path string) bool {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-
-	var statfs unix.Statfs_t
-	if unix.Statfs(path, &statfs) != nil {
-		return false
-	}
-
-	sys, ok := stat.Sys().(*syscall.Stat_t)
-
-	return ok && sys != nil && sys.Ino == btrfsSubvolInode && statfs.Type == unix.BTRFS_SUPER_MAGIC
-}
-
-type volume struct {
-	path      string
-	snapshots []string
-}
-
 const (
-	rootParam        = "root="
-	btrfsSubvolInode = 256
+	name              = "bootsnap"
+	defaultMountpoint = "/btrfs-pool"
+	rootParam         = "root="
 )
