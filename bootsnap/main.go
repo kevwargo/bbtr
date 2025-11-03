@@ -1,9 +1,8 @@
 package main
 
 import (
-	"log"
-
 	"github.com/kevwargo/bootsnap/internal/bootsnap"
+	"github.com/kevwargo/bootsnap/internal/log"
 )
 
 func main() {

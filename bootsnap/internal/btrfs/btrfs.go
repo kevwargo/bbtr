@@ -2,7 +2,6 @@ package btrfs
 
 import (
 	"fmt"
-	"log"
 	"maps"
 	"os"
 	"os/exec"
@@ -11,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kevwargo/bootsnap/internal/log"
 	"golang.org/x/sys/unix"
 )
 

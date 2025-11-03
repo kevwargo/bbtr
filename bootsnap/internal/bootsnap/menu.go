@@ -1,12 +1,11 @@
 package bootsnap
 
 import (
-	"log"
-
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kevwargo/bootsnap/internal/btrfs"
+	"github.com/kevwargo/bootsnap/internal/log"
 )
 
 type menu struct {
