@@ -10,10 +10,10 @@ import (
 )
 
 type menu struct {
-	pool            *btrfs.Pool
-	table           table.Model
-	selectedVolume  int
-	markedSnapshots map[string]string
+	pool             *btrfs.Pool
+	table            table.Model
+	horizontalCursor int
+	markedSnapshots  map[string]string
 }
 
 func runMenu(pool *btrfs.Pool) error {
@@ -74,23 +74,26 @@ func (m *menu) buildTable() {
 }
 
 func (m *menu) updateTable() {
+	selectedVolume := m.selectedVolume()
+
 	for ri, row := range m.table.Rows() {
 		snapshot := m.pool.AllSnapshotNames[ri]
 		selectedRow := ri == m.table.Cursor()
 
 		for vi, subvol := range m.pool.Subvols {
-			prefix := " "
-			if selectedRow && vi == m.selectedVolume {
-				prefix = ">"
+			if _, ok := subvol.SnapshotPaths[snapshot]; !ok {
+				continue
 			}
 
-			if _, ok := subvol.SnapshotPaths[snapshot]; !ok {
-				row[vi+1] = prefix
-			} else if m.markedSnapshots[subvol.Name] == snapshot {
-				row[vi+1] = prefix + "[v]"
-			} else {
-				row[vi+1] = prefix + "[ ]"
+			cell := " [ ]"
+			if m.markedSnapshots[subvol.Name] == snapshot {
+				cell = " [x]"
 			}
+			if selectedRow && vi == selectedVolume {
+				cell = ">" + cell[1:]
+			}
+
+			row[vi+1] = cell
 		}
 	}
 
@@ -127,9 +130,9 @@ func (m *menu) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 	switch k := msg.String(); k {
 	case "left":
-		m.selectedVolume = max(0, m.selectedVolume-1)
+		m.horizontalCursor = max(0, m.horizontalCursor-1)
 	case "right":
-		m.selectedVolume = min(m.selectedVolume+1, len(m.pool.Subvols)-1)
+		m.horizontalCursor = min(m.horizontalCursor+1, len(m.pool.Subvols)-1)
 	case " ":
 		m.toggleMark()
 	case "q", "ctrl+c":
@@ -147,7 +150,7 @@ func (m *menu) handleKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *menu) toggleMark() {
-	subvol := m.pool.Subvols[m.selectedVolume]
+	subvol := m.pool.Subvols[m.selectedVolume()]
 	snapshot := m.pool.AllSnapshotNames[m.table.Cursor()]
 
 	if _, ok := subvol.SnapshotPaths[snapshot]; ok {
@@ -157,6 +160,28 @@ func (m *menu) toggleMark() {
 			m.markedSnapshots[subvol.Name] = snapshot
 		}
 	}
+}
+
+func (m *menu) selectedVolume() int {
+	snapshot := m.pool.AllSnapshotNames[m.table.Cursor()]
+
+	for i := range m.pool.Subvols {
+		after := m.horizontalCursor + i
+		if after < len(m.pool.Subvols) {
+			if _, ok := m.pool.Subvols[after].SnapshotPaths[snapshot]; ok {
+				return after
+			}
+		}
+
+		before := m.horizontalCursor - i
+		if before >= 0 {
+			if _, ok := m.pool.Subvols[before].SnapshotPaths[snapshot]; ok {
+				return before
+			}
+		}
+	}
+
+	return m.horizontalCursor
 }
 
 const (
