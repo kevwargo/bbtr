@@ -159,14 +159,6 @@ func (m *menu) toggleMark() {
 	}
 }
 
-func dist(x, y int) int {
-	if d := x - y; d < 0 {
-		return -d
-	} else {
-		return d
-	}
-}
-
 const (
 	timestampTitle     = "Timestamp"
 	selectedForeground = lipgloss.Color("10")
