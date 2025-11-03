@@ -37,7 +37,7 @@ func readKernelParams() ([]string, error) {
 		return nil, err
 	}
 
-	return strings.Split(string(data), " "), nil
+	return strings.Split(strings.TrimSpace(string(data)), " "), nil
 }
 
 func execute(mountpoint string, force bool) error {
