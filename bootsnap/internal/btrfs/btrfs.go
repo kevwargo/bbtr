@@ -19,6 +19,10 @@ const SnapshotFormat = "20060102-150405"
 type Pool struct {
 	AllSnapshotNames []string
 	Subvols          []Subvol
+
+	mountpoint           string
+	needUnmount          bool
+	needRemoveMountpoint bool
 }
 
 type Subvol struct {
@@ -27,13 +31,20 @@ type Subvol struct {
 	SnapshotPaths map[string]string
 }
 
-func Mount(dev, mountpoint string) (*Pool, error) {
-	if err := mount(dev, mountpoint); err != nil {
+func Open(dev, mountpoint string) (_ *Pool, err error) {
+	p := Pool{mountpoint: mountpoint}
+
+	defer func() {
+		if err != nil {
+			p.Close()
+		}
+	}()
+
+	if err = p.mount(dev); err != nil {
 		return nil, err
 	}
 
 	var (
-		p                Pool
 		allSnapshotNames = make(map[string]struct{})
 		rootSnapDir      = filepath.Join(mountpoint, "s")
 	)
@@ -81,13 +92,31 @@ func Mount(dev, mountpoint string) (*Pool, error) {
 	return &p, nil
 }
 
-func isSubvol(path string) bool {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return false
+func (p *Pool) Close() {
+	if p.needUnmount {
+		cmd := exec.Command("umount", p.mountpoint)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		log.Println(cmd)
+
+		if err := cmd.Run(); err != nil {
+			log.Printf("unmounting %s: %s", p.mountpoint, err.Error())
+		}
 	}
 
-	if !stat.IsDir() {
+	if p.needRemoveMountpoint {
+		if err := os.Remove(p.mountpoint); err != nil {
+			log.Printf("removing %s: %s", p.mountpoint, err.Error())
+		} else {
+			log.Printf("removed %s", p.mountpoint)
+		}
+	}
+}
+
+func isSubvol(path string) bool {
+	stat := statDir(path)
+	if stat == nil {
 		return false
 	}
 
@@ -103,22 +132,41 @@ func isSubvol(path string) bool {
 	return statfs.Type == unix.BTRFS_SUPER_MAGIC
 }
 
-func mount(dev, mountpoint string) error {
-	if isSubvol(mountpoint) {
+func (p *Pool) mount(dev string) error {
+	if isSubvol(p.mountpoint) {
 		return nil
 	}
 
-	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
-		return fmt.Errorf("creating mountpoint %q: %w", mountpoint, err)
+	if statDir(p.mountpoint) == nil {
+		if err := os.MkdirAll(p.mountpoint, 0o755); err != nil {
+			return fmt.Errorf("creating mountpoint %q: %w", p.mountpoint, err)
+		}
+
+		p.needRemoveMountpoint = true
 	}
 
-	cmd := exec.Command("mount", "-t", "btrfs", dev, mountpoint)
+	cmd := exec.Command("mount", "-t", "btrfs", dev, p.mountpoint)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	log.Println(cmd)
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	p.needUnmount = true
+
+	return nil
+}
+
+func statDir(path string) os.FileInfo {
+	stat, err := os.Stat(path)
+	if err != nil || !stat.IsDir() {
+		return nil
+	}
+
+	return stat
 }
 
 const btrfsSubvolInode = 256

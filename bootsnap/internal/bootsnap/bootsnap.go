@@ -55,10 +55,11 @@ func execute(mountpoint string, force bool) error {
 		return err
 	}
 
-	pool, err := btrfs.Mount(rootDev, mountpoint)
+	pool, err := btrfs.Open(rootDev, mountpoint)
 	if err != nil {
 		return err
 	}
+	defer pool.Close()
 
 	return runMenu(pool)
 }
