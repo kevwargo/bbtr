@@ -53,7 +53,7 @@ func (m *menu) buildTable() {
 	for _, v := range m.pool.Subvols {
 		cols = append(cols, table.Column{
 			Title: v.Name,
-			Width: len(v.Name),
+			Width: max(minCellWidth, len(v.Name)),
 		})
 	}
 
@@ -84,12 +84,12 @@ func (m *menu) updateTable() {
 				continue
 			}
 
-			cell := " [ ]"
+			cell := " [ ] "
 			if m.markedSnapshots[subvol.Name] == snapshot {
-				cell = " [x]"
+				cell = " [x] "
 			}
 			if selectedRow && vi == selectedVolume {
-				cell = ">" + cell[1:]
+				cell = ">" + cell[1:len(cell)-1] + "<"
 			}
 
 			row[vi+1] = cell
@@ -129,9 +129,9 @@ func (m *menu) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 	switch k := msg.String(); k {
 	case "left":
-		m.horizontalCursor = max(0, m.horizontalCursor-1)
+		m.moveCursor(-1)
 	case "right":
-		m.horizontalCursor = min(m.horizontalCursor+1, len(m.pool.Subvols)-1)
+		m.moveCursor(1)
 	case " ":
 		m.toggleMark()
 	case "q", "ctrl+c":
@@ -161,6 +161,11 @@ func (m *menu) toggleMark() {
 	}
 }
 
+func (m *menu) moveCursor(delta int) {
+	m.horizontalCursor = max(0, min(m.horizontalCursor+delta, len(m.pool.Subvols)-1))
+	m.horizontalCursor = m.selectedVolume()
+}
+
 func (m *menu) selectedVolume() int {
 	snapshot := m.pool.AllSnapshotNames[m.table.Cursor()]
 
@@ -186,4 +191,11 @@ func (m *menu) selectedVolume() int {
 const (
 	timestampTitle     = "Timestamp"
 	selectedForeground = lipgloss.Color("10")
+
+	// possible non-empty options:
+	// ">[x]<"
+	// ">[ ]<"
+	// " [x] "
+	// " [ ] "
+	minCellWidth = 5
 )
