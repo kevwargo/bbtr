@@ -3,59 +3,32 @@ package bootsnap
 import (
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/kevwargo/bootsnap/internal/btrfs"
-	"github.com/spf13/cobra"
 )
 
 func Execute() error {
-	var (
-		force      bool
-		mountpoint string
-	)
-
-	cmd := &cobra.Command{
-		Use:           name,
-		SilenceErrors: true,
-		SilenceUsage:  true,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return execute(mountpoint, force)
-		},
-	}
-
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "Force bootsnap menu even without the appropriate kernel param")
-	cmd.Flags().StringVarP(&mountpoint, "mountpoint", "m", defaultMountpoint, "Mountpoint for BTRFS pool")
-
-	return cmd.Execute()
-}
-
-func readKernelParams() ([]string, error) {
-	data, err := os.ReadFile("/proc/cmdline")
-	if err != nil {
-		return nil, err
-	}
-
-	return strings.Split(strings.TrimSpace(string(data)), " "), nil
-}
-
-func execute(mountpoint string, force bool) error {
-	kernelParams, err := readKernelParams()
+	params, err := readParams()
 	if err != nil {
 		return err
 	}
 
-	if !force && !slices.Contains(kernelParams, name) {
+	if _, ok := params[paramEnabled]; !ok {
 		return nil
 	}
 
-	rootDev, err := findRootDev(kernelParams)
-	if err != nil {
-		return err
+	rootDev := params[paramRoot]
+	if rootDev == nil {
+		return fmt.Errorf("kernel parameter %q not found", paramRoot)
 	}
 
-	pool, err := btrfs.Open(rootDev, mountpoint)
+	mountpoint := defaultMountpoint
+	if mntpt := params[paramMountpoint]; mntpt != nil {
+		mountpoint = *mntpt
+	}
+
+	pool, err := btrfs.Open(*rootDev, mountpoint)
 	if err != nil {
 		return err
 	}
@@ -64,18 +37,37 @@ func execute(mountpoint string, force bool) error {
 	return runMenu(pool)
 }
 
-func findRootDev(kernelParams []string) (string, error) {
-	for _, param := range kernelParams {
-		if val, ok := strings.CutPrefix(param, rootParam); ok && val != "" {
-			return val, nil
+func readParams() (map[string]*string, error) {
+	raw := os.Args[1:]
+	if len(raw) == 0 {
+		data, err := os.ReadFile(procCmdline)
+		if err != nil {
+			return nil, err
+		}
+
+		raw = strings.Split(strings.TrimSpace(string(data)), " ")
+	}
+
+	params := make(map[string]*string)
+
+	for _, param := range raw {
+		parts := strings.SplitN(param, "=", 2)
+
+		if len(parts) == 1 {
+			params[param] = nil
+		} else {
+			params[parts[0]] = &parts[1]
 		}
 	}
 
-	return "", fmt.Errorf("%q* kernel param not found", rootParam)
+	return params, nil
 }
 
 const (
 	name              = "bootsnap"
 	defaultMountpoint = "/btrfs-pool"
-	rootParam         = "root="
+	paramRoot         = "root"
+	paramEnabled      = name + ".on"
+	paramMountpoint   = name + ".mountpoint"
+	procCmdline       = "/proc/cmdline"
 )
