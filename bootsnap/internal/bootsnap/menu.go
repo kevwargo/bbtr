@@ -1,19 +1,13 @@
 package bootsnap
 
 import (
-	"github.com/charmbracelet/bubbles/table"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/kevwargo/bootsnap/internal/btrfs"
 	"github.com/kevwargo/bootsnap/internal/log"
+	"github.com/kevwargo/bootsnap/internal/tui"
 )
-
-type menu struct {
-	pool             *btrfs.Pool
-	table            table.Model
-	horizontalCursor int
-	markedSnapshots  map[string]string
-}
 
 func runMenu(pool *btrfs.Pool) error {
 	m := menu{pool: pool}
@@ -22,180 +16,93 @@ func runMenu(pool *btrfs.Pool) error {
 		return err
 	}
 
-	for _, v := range pool.Subvols {
-		if s, ok := m.markedSnapshots[v.Name]; ok {
-			if path, ok := v.SnapshotPaths[s]; ok {
-				log.Printf("Restoring %s to %s", v.Path, path)
-			}
+	if !m.complete {
+		log.Println("program interrupted")
+
+		return nil
+	}
+
+	for _, subvol := range pool.Subvols {
+		if backup, ok := m.backupsTable.Marked()[subvol.Name]; ok {
+			log.Printf("btrfs subvolume snapshot -r %s %s~%s", subvol.Path, subvol.Name, backup)
+		}
+
+		snapName, ok := m.snapshotsTable.Marked()[subvol.Name]
+		if !ok {
+			continue
+		}
+
+		if snapPath, ok := subvol.SnapshotPaths[snapName]; ok {
+			log.Printf("btrfs subvolume snapshot %s %s", snapPath, subvol.Path)
 		}
 	}
 
 	return nil
+}
+
+type menu struct {
+	pool           *btrfs.Pool
+	snapshotsTable *tui.Table
+	backupsTable   *tui.Table
+	windowHeight   int
+	complete       bool
 }
 
 func (m *menu) Init() tea.Cmd {
-	m.markedSnapshots = make(map[string]string)
-	m.buildTable()
-	m.updateTable()
+	m.snapshotsTable = tui.NewTable("Snapshot timestamp", m.pool.Table())
+	m.backupsTable = nil
 
 	return nil
 }
 
-func (m *menu) buildTable() {
-	styles := table.DefaultStyles()
-	styles.Selected = styles.Selected.Foreground(selectedForeground)
-
-	cols := make([]table.Column, 0, len(m.pool.Subvols)+1)
-	cols = append(cols, table.Column{
-		Title: timestampTitle,
-		Width: max(len(timestampTitle), len(btrfs.SnapshotFormat)),
-	})
-	for _, v := range m.pool.Subvols {
-		cols = append(cols, table.Column{
-			Title: v.Name,
-			Width: max(minCellWidth, len(v.Name)),
-		})
-	}
-
-	rows := make([]table.Row, 0, len(m.pool.AllSnapshotNames))
-	for _, snapshot := range m.pool.AllSnapshotNames {
-		row := make(table.Row, len(m.pool.Subvols)+1)
-		row[0] = snapshot
-		rows = append(rows, row)
-	}
-
-	m.table = table.New(
-		table.WithRows(rows),
-		table.WithColumns(cols),
-		table.WithFocused(true),
-		table.WithStyles(styles),
-	)
-}
-
-func (m *menu) updateTable() {
-	selectedVolume := m.selectedVolume()
-
-	for ri, row := range m.table.Rows() {
-		snapshot := m.pool.AllSnapshotNames[ri]
-		selectedRow := ri == m.table.Cursor()
-
-		for vi, subvol := range m.pool.Subvols {
-			if _, ok := subvol.SnapshotPaths[snapshot]; !ok {
-				continue
-			}
-
-			cell := " [ ] "
-			if m.markedSnapshots[subvol.Name] == snapshot {
-				cell = " [x] "
-			}
-			if selectedRow && vi == selectedVolume {
-				cell = ">" + cell[1:len(cell)-1] + "<"
-			}
-
-			row[vi+1] = cell
-		}
-	}
-
-	m.table.UpdateViewport()
-}
-
 func (m *menu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		cmd = m.handleKey(msg)
-	case tea.WindowSizeMsg:
-		height := msg.Height
-		count := len(m.pool.AllSnapshotNames)
-		if height > count+1 {
-			height = count + 1
-		} else {
-			height--
+		switch k := msg.String(); k {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "enter":
+			return m, m.switchOrQuit()
+		default:
+			m.currentTable().HandleKey(msg)
 		}
-
-		m.table.SetHeight(height)
+	case tea.WindowSizeMsg:
+		m.windowHeight = msg.Height
+		m.currentTable().SetHeight(m.windowHeight)
 	}
 
-	return m, cmd
+	return m, nil
 }
 
 func (m *menu) View() string {
-	return m.table.View() + "\n"
+	return m.currentTable().View()
 }
 
-func (m *menu) handleKey(msg tea.KeyMsg) tea.Cmd {
-	var cmd tea.Cmd
-
-	switch k := msg.String(); k {
-	case "left":
-		m.moveCursor(-1)
-	case "right":
-		m.moveCursor(1)
-	case " ":
-		m.toggleMark()
-	case "q", "ctrl+c":
-		m.markedSnapshots = nil
-		cmd = tea.Quit
-	case "enter":
-		cmd = tea.Quit
-	default:
-		m.table, cmd = m.table.Update(msg)
+func (m *menu) currentTable() *tui.Table {
+	if m.backupsTable != nil {
+		return m.backupsTable
 	}
 
-	m.updateTable()
-
-	return cmd
+	return m.snapshotsTable
 }
 
-func (m *menu) toggleMark() {
-	subvol := m.pool.Subvols[m.selectedVolume()]
-	snapshot := m.pool.AllSnapshotNames[m.table.Cursor()]
+func (m *menu) switchOrQuit() tea.Cmd {
+	if m.backupsTable != nil {
+		m.complete = true
 
-	if _, ok := subvol.SnapshotPaths[snapshot]; ok {
-		if m.markedSnapshots[subvol.Name] == snapshot {
-			delete(m.markedSnapshots, subvol.Name)
-		} else {
-			m.markedSnapshots[subvol.Name] = snapshot
-		}
-	}
-}
-
-func (m *menu) moveCursor(delta int) {
-	m.horizontalCursor = max(0, min(m.horizontalCursor+delta, len(m.pool.Subvols)-1))
-	m.horizontalCursor = m.selectedVolume()
-}
-
-func (m *menu) selectedVolume() int {
-	snapshot := m.pool.AllSnapshotNames[m.table.Cursor()]
-
-	for i := range m.pool.Subvols {
-		after := m.horizontalCursor + i
-		if after < len(m.pool.Subvols) {
-			if _, ok := m.pool.Subvols[after].SnapshotPaths[snapshot]; ok {
-				return after
-			}
-		}
-
-		before := m.horizontalCursor - i
-		if before >= 0 {
-			if _, ok := m.pool.Subvols[before].SnapshotPaths[snapshot]; ok {
-				return before
-			}
-		}
+		return tea.Quit
 	}
 
-	return m.horizontalCursor
+	now := time.Now().Format(btrfs.SnapshotFormat)
+	data := make(map[string][]string)
+	for _, subvol := range m.pool.Subvols {
+		data[subvol.Name] = []string{now}
+	}
+
+	m.backupsTable = tui.NewTable("Create backup(s)?", data)
+	if m.windowHeight > 0 {
+		m.backupsTable.SetHeight(m.windowHeight)
+	}
+
+	return tea.Println(m.snapshotsTable.View())
 }
-
-const (
-	timestampTitle     = "Timestamp"
-	selectedForeground = lipgloss.Color("10")
-
-	// possible non-empty options:
-	// ">[x]<"
-	// ">[ ]<"
-	// " [x] "
-	// " [ ] "
-	minCellWidth = 5
-)

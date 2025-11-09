@@ -114,6 +114,18 @@ func (p *Pool) Close() {
 	}
 }
 
+func (p *Pool) Table() map[string][]string {
+	table := make(map[string][]string)
+
+	for _, subvol := range p.Subvols {
+		for snapshot := range subvol.SnapshotPaths {
+			table[subvol.Name] = append(table[subvol.Name], snapshot)
+		}
+	}
+
+	return table
+}
+
 func isSubvol(path string) bool {
 	stat := statDir(path)
 	if stat == nil {
