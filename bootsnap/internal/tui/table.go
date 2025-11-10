@@ -100,6 +100,8 @@ func (t *Table) HandleKey(km tea.KeyMsg) {
 		t.moveCursor(1)
 	case " ":
 		t.toggleMark()
+	case "ctrl+a":
+		t.toggleSelectedRow()
 	default:
 		t.table, _ = t.table.Update(km)
 	}
@@ -175,6 +177,41 @@ func (t *Table) toggleMark() {
 		delete(t.marked, col)
 	} else {
 		t.marked[col] = row
+	}
+}
+
+func (t *Table) toggleSelectedRow() {
+	var (
+		rowName = t.table.SelectedRow()[0]
+
+		count    int
+		marked   []string
+		unmarked []string
+	)
+
+	for _, col := range t.table.Columns()[1:] {
+		colName := col.Title
+
+		if !t.assoc[colName][rowName] {
+			continue
+		}
+
+		count++
+		if t.marked[colName] == rowName {
+			marked = append(marked, colName)
+		} else {
+			unmarked = append(unmarked, colName)
+		}
+	}
+
+	if count == len(marked) {
+		for _, col := range marked {
+			delete(t.marked, col)
+		}
+	} else {
+		for _, col := range unmarked {
+			t.marked[col] = rowName
+		}
 	}
 }
 
