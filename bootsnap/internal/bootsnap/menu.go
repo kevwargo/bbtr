@@ -45,6 +45,7 @@ type menu struct {
 	snapshotsTable *tui.Table
 	backupsTable   *tui.Table
 	windowHeight   int
+	quitting       bool
 	complete       bool
 }
 
@@ -60,7 +61,7 @@ func (m *menu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch k := msg.String(); k {
 		case "ctrl+c", "q":
-			return m, tea.Quit
+			return m, m.quit
 		case "enter":
 			return m, m.switchOrQuit()
 		default:
@@ -75,7 +76,11 @@ func (m *menu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *menu) View() string {
-	return m.currentTable().View()
+	if v := m.currentTable().View(); m.quitting {
+		return v + "\n"
+	} else {
+		return v
+	}
 }
 
 func (m *menu) currentTable() *tui.Table {
@@ -90,7 +95,7 @@ func (m *menu) switchOrQuit() tea.Cmd {
 	if m.backupsTable != nil {
 		m.complete = true
 
-		return tea.Quit
+		return m.quit
 	}
 
 	now := time.Now().Format(btrfs.SnapshotFormat)
@@ -105,4 +110,10 @@ func (m *menu) switchOrQuit() tea.Cmd {
 	}
 
 	return tea.Println(m.snapshotsTable.View())
+}
+
+func (m *menu) quit() tea.Msg {
+	m.quitting = true
+
+	return tea.QuitMsg{}
 }
