@@ -24,16 +24,15 @@ func runMenu(pool *btrfs.Pool) error {
 
 	for _, subvol := range pool.Subvols {
 		if backup, ok := m.backupsTable.Marked()[subvol.Name]; ok {
-			log.Printf("btrfs subvolume snapshot -r %s %s~%s", subvol.Path, subvol.Name, backup)
+			if err := subvol.Backup(backup); err != nil {
+				return err
+			}
 		}
 
-		snapName, ok := m.snapshotsTable.Marked()[subvol.Name]
-		if !ok {
-			continue
-		}
-
-		if snapPath, ok := subvol.SnapshotPaths[snapName]; ok {
-			log.Printf("btrfs subvolume snapshot %s %s", snapPath, subvol.Path)
+		if snapshot, ok := m.snapshotsTable.Marked()[subvol.Name]; ok {
+			if err := subvol.Restore(snapshot); err != nil {
+				return err
+			}
 		}
 	}
 

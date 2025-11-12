@@ -2,11 +2,9 @@ package btrfs
 
 import (
 	"fmt"
-	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"syscall"
 	"time"
 
@@ -17,8 +15,7 @@ import (
 const SnapshotFormat = "20060102-150405"
 
 type Pool struct {
-	AllSnapshotNames []string
-	Subvols          []Subvol
+	Subvols []Subvol
 
 	mountpoint           string
 	needUnmount          bool
@@ -29,29 +26,32 @@ type Subvol struct {
 	Name          string
 	Path          string
 	SnapshotPaths map[string]string
+
+	snapDir string
 }
 
-func Open(dev, mountpoint string) (_ *Pool, err error) {
-	p := Pool{mountpoint: mountpoint}
+func Open(dev, mountpoint string) (*Pool, error) {
+	var (
+		p       = Pool{mountpoint: mountpoint}
+		empty   = true
+		success bool
+	)
 
 	defer func() {
-		if err != nil {
+		if !success {
 			p.Close()
 		}
 	}()
 
-	if err = p.mount(dev); err != nil {
+	if err := p.mount(dev); err != nil {
 		return nil, err
 	}
 
-	var (
-		allSnapshotNames = make(map[string]struct{})
-		rootSnapDir      = filepath.Join(mountpoint, "s")
-	)
+	snapDir := filepath.Join(mountpoint, "s")
 
-	entries, err := os.ReadDir(rootSnapDir)
+	entries, err := os.ReadDir(snapDir)
 	if err != nil {
-		return nil, fmt.Errorf("listing dir %q: %w", rootSnapDir, err)
+		return nil, fmt.Errorf("listing dir %q: %w", snapDir, err)
 	}
 
 	for _, e := range entries {
@@ -59,17 +59,18 @@ func Open(dev, mountpoint string) (_ *Pool, err error) {
 			Name:          e.Name(),
 			Path:          filepath.Join(mountpoint, "@"+e.Name()),
 			SnapshotPaths: make(map[string]string),
+
+			snapDir: filepath.Join(snapDir, e.Name()),
 		}
 
-		snapDir := filepath.Join(rootSnapDir, subvol.Name)
-		snapEntries, err := os.ReadDir(snapDir)
+		snapEntries, err := os.ReadDir(subvol.snapDir)
 		if err != nil {
-			return nil, fmt.Errorf("listing dir %q: %w", snapDir, err)
+			return nil, fmt.Errorf("listing dir %q: %w", subvol.snapDir, err)
 		}
 
 		for _, se := range snapEntries {
 			snapName := se.Name()
-			snapPath := filepath.Join(snapDir, snapName)
+			snapPath := filepath.Join(subvol.snapDir, snapName)
 
 			if !isSubvol(snapPath) {
 				continue
@@ -80,27 +81,24 @@ func Open(dev, mountpoint string) (_ *Pool, err error) {
 			}
 
 			subvol.SnapshotPaths[snapName] = snapPath
-			allSnapshotNames[snapName] = struct{}{}
+			empty = false
 		}
 
 		p.Subvols = append(p.Subvols, subvol)
 	}
 
-	p.AllSnapshotNames = slices.Collect(maps.Keys(allSnapshotNames))
-	slices.Sort(p.AllSnapshotNames)
+	if empty {
+		return nil, fmt.Errorf("Mountpoint %s does not contain valid snapshots", mountpoint)
+	}
+
+	success = true
 
 	return &p, nil
 }
 
 func (p *Pool) Close() {
 	if p.needUnmount {
-		cmd := exec.Command("umount", p.mountpoint)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		log.Println(cmd)
-
-		if err := cmd.Run(); err != nil {
+		if err := runCmd("umount", p.mountpoint); err != nil {
 			log.Printf("unmounting %s: %s", p.mountpoint, err.Error())
 		}
 	}
@@ -126,6 +124,25 @@ func (p *Pool) Table() map[string][]string {
 	return table
 }
 
+func (s Subvol) Backup(name string) error {
+	return runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, filepath.Join(s.snapDir, name))
+}
+
+func (s Subvol) Restore(snapshot string) error {
+	path, ok := s.SnapshotPaths[snapshot]
+	if !ok {
+		log.Printf("Ignoring restore request for non-existent snapshot %q for %s", snapshot, s.Name)
+
+		return nil
+	}
+
+	if err := runCmd("btrfs", "subvolume", "delete", "--commit-after", s.Path); err != nil {
+		return err
+	}
+
+	return runCmd("btrfs", "subvolume", "snapshot", path, s.Path)
+}
+
 func isSubvol(path string) bool {
 	stat := statDir(path)
 	if stat == nil {
@@ -137,7 +154,7 @@ func isSubvol(path string) bool {
 	}
 
 	var statfs unix.Statfs_t
-	if unix.Statfs(path, &statfs) != nil {
+	if err := unix.Statfs(path, &statfs); err != nil {
 		return false
 	}
 
@@ -157,13 +174,7 @@ func (p *Pool) mount(dev string) error {
 		p.needRemoveMountpoint = true
 	}
 
-	cmd := exec.Command("mount", "-t", "btrfs", dev, p.mountpoint)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	log.Println(cmd)
-
-	if err := cmd.Run(); err != nil {
+	if err := runCmd("mount", "-t", "btrfs", dev, p.mountpoint); err != nil {
 		return err
 	}
 
@@ -179,6 +190,16 @@ func statDir(path string) os.FileInfo {
 	}
 
 	return stat
+}
+
+func runCmd(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = log.Stream()
+	cmd.Stderr = log.Stream()
+
+	log.Println(cmd)
+
+	return cmd.Run()
 }
 
 const btrfsSubvolInode = 256
