@@ -97,7 +97,7 @@ func (m *menu) switchOrQuit() tea.Cmd {
 		return m.quit
 	}
 
-	now := time.Now().Format(btrfs.SnapshotFormat)
+	now := time.Now().UTC().Format(btrfs.SnapshotFormat)
 	data := make(map[string][]string)
 	for _, subvol := range m.pool.Subvols {
 		data[subvol.Name] = []string{now}

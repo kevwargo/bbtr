@@ -12,7 +12,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const SnapshotFormat = "20060102-150405"
+const SnapshotFormat = "20060102-150405Z"
 
 type Pool struct {
 	Subvols []Subvol
