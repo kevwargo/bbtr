@@ -1,12 +1,12 @@
 package bootsnap
 
 import (
+	"log"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/kevwargo/bootsnap/internal/btrfs"
-	"github.com/kevwargo/bootsnap/internal/log"
-	"github.com/kevwargo/bootsnap/internal/tui"
+	"github.com/kevwargo/btrscr/bootsnap/internal/tui"
+	"github.com/kevwargo/btrscr/internal/btrfs"
 )
 
 func runMenu(pool *btrfs.Pool) error {

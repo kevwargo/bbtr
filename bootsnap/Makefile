@@ -5,7 +5,7 @@ INSTALL := install -o root -g root -m 0755
 
 .PHONY: build
 build:
-	go build -o $(BIN) main.go
+	go build -o $(BIN) cmd/main.go
 
 .PHONY: install
 install:

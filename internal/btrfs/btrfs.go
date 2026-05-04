@@ -2,13 +2,13 @@ package btrfs
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 	"time"
 
-	"github.com/kevwargo/bootsnap/internal/log"
 	"golang.org/x/sys/unix"
 )
 
@@ -194,8 +194,8 @@ func statDir(path string) os.FileInfo {
 
 func runCmd(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	cmd.Stdout = log.Stream()
-	cmd.Stderr = log.Stream()
+	cmd.Stdout = log.Writer()
+	cmd.Stderr = log.Writer()
 
 	log.Println(cmd)
 

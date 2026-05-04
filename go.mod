@@ -1,4 +1,4 @@
-module github.com/kevwargo/bootsnap
+module github.com/kevwargo/btrscr
 
 go 1.25.1
 

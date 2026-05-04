@@ -1,11 +1,13 @@
 package bootsnap
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
-	"github.com/kevwargo/bootsnap/internal/btrfs"
+	"github.com/kevwargo/btrscr/internal/btrfs"
 )
 
 func Execute() error {
@@ -34,7 +36,11 @@ func Execute() error {
 	}
 	defer pool.Close()
 
-	return runMenu(pool)
+	// return runMenu(pool)
+
+	enc := json.NewEncoder(log.Writer())
+	enc.SetIndent("", "  ")
+	return enc.Encode(pool)
 }
 
 func readParams() (map[string]*string, error) {
