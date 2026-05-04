@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,6 +29,60 @@ type Subvol struct {
 	SnapshotPaths map[string]string
 
 	snapDir string
+}
+
+func OpenSubvol(subvolMountpoint string) (*Subvol, error) {
+	var err error
+	subvolMountpoint, err = filepath.Abs(subvolMountpoint)
+	if err != nil {
+		return nil, err
+	}
+
+	mountinfos, err := readMountinfos()
+	if err != nil {
+		return nil, err
+	}
+
+	var subvolMountinfo *mountinfo
+	for _, mi := range mountinfos {
+		if mi.Mountpoint == subvolMountpoint {
+			if mi.FSType != "btrfs" {
+				return nil, fmt.Errorf("%s is not btrfs subvolume", subvolMountpoint)
+			}
+			if mi.FSRoot == "/" {
+				return nil, fmt.Errorf("%s is a btrfs root", subvolMountpoint)
+			}
+
+			subvolMountinfo = &mi
+			break
+		}
+	}
+
+	if subvolMountinfo == nil {
+		return nil, fmt.Errorf("%s is not a valid mountpoint", subvolMountpoint)
+	}
+	if !strings.HasPrefix(subvolMountinfo.FSRoot, "/@") {
+		return nil, fmt.Errorf("%s is not a conventional subvolume", subvolMountpoint)
+	}
+	subvolName := subvolMountinfo.FSRoot[2:]
+
+	var pool string
+	for _, mi := range mountinfos {
+		if mi.Dev == subvolMountinfo.Dev && mi.FSRoot == "/" {
+			pool = mi.Mountpoint
+			break
+		}
+	}
+
+	if pool == "" {
+		return nil, fmt.Errorf("root of %s is not mounted", subvolMountpoint)
+	}
+
+	return &Subvol{
+		Path:    pool + subvolMountinfo.FSRoot,
+		Name:    subvolName,
+		snapDir: filepath.Join(pool, "s", subvolName),
+	}, nil
 }
 
 func Open(dev, mountpoint string) (*Pool, error) {
@@ -126,6 +181,16 @@ func (p *Pool) Table() map[string][]string {
 
 func (s Subvol) Backup(name string) error {
 	return runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, filepath.Join(s.snapDir, name))
+}
+
+func (s Subvol) BackupNow() (string, error) {
+	path := filepath.Join(s.snapDir, time.Now().UTC().Format(SnapshotFormat))
+	err := runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, path)
+	if err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 func (s Subvol) Restore(snapshot string) error {
