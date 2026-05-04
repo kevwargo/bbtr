@@ -1,9 +1,7 @@
 package bootsnap
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -36,11 +34,7 @@ func Execute() error {
 	}
 	defer pool.Close()
 
-	// return runMenu(pool)
-
-	enc := json.NewEncoder(log.Writer())
-	enc.SetIndent("", "  ")
-	return enc.Encode(pool)
+	return runMenu(pool)
 }
 
 func readParams() (map[string]*string, error) {
