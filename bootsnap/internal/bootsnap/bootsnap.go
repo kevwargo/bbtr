@@ -28,7 +28,7 @@ func Execute() error {
 		mountpoint = *mntpt
 	}
 
-	pool, err := btrfs.Open(*rootDev, mountpoint)
+	pool, err := btrfs.OpenPool(*rootDev, mountpoint)
 	if err != nil {
 		return err
 	}

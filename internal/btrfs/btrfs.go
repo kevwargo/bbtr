@@ -85,7 +85,7 @@ func OpenSubvol(subvolMountpoint string) (*Subvol, error) {
 	}, nil
 }
 
-func Open(dev, mountpoint string) (*Pool, error) {
+func OpenPool(dev, mountpoint string) (*Pool, error) {
 	var (
 		p       = Pool{mountpoint: mountpoint}
 		empty   = true
@@ -179,18 +179,17 @@ func (p *Pool) Table() map[string][]string {
 	return table
 }
 
-func (s Subvol) Backup(name string) error {
-	return runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, filepath.Join(s.snapDir, name))
-}
-
-func (s Subvol) BackupNow() (string, error) {
-	path := filepath.Join(s.snapDir, time.Now().UTC().Format(SnapshotFormat))
-	err := runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, path)
-	if err != nil {
+func (s Subvol) Backup(snapName string) (string, error) {
+	path := filepath.Join(s.snapDir, snapName)
+	if err := runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, path); err != nil {
 		return "", err
 	}
 
 	return path, nil
+}
+
+func (s Subvol) BackupNow() (string, error) {
+	return s.Backup(time.Now().UTC().Format(SnapshotFormat))
 }
 
 func (s Subvol) Restore(snapshot string) error {

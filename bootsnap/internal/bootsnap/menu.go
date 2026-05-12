@@ -24,7 +24,7 @@ func runMenu(pool *btrfs.Pool) error {
 
 	for _, subvol := range pool.Subvols {
 		if backup, ok := m.backupsTable.Marked()[subvol.Name]; ok {
-			if err := subvol.Backup(backup); err != nil {
+			if _, err := subvol.Backup(backup); err != nil {
 				return err
 			}
 		}
