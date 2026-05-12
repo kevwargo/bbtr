@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	"github.com/kevwargo/btrscr/bootsnap/internal/bootsnap"
-	"github.com/kevwargo/btrscr/bootsnap/internal/logger"
+	"github.com/kevwargo/bbtr/bootsnap/internal/bootsnap"
+	"github.com/kevwargo/bbtr/bootsnap/internal/logger"
 )
 
 func main() {

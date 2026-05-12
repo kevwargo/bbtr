@@ -5,8 +5,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/kevwargo/btrscr/bootsnap/internal/tui"
-	"github.com/kevwargo/btrscr/internal/btrfs"
+	"github.com/kevwargo/bbtr/bootsnap/internal/tui"
+	"github.com/kevwargo/bbtr/internal/btrfs"
 )
 
 func runMenu(pool *btrfs.Pool) error {

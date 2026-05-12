@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kevwargo/btrscr/internal/btrfs"
+	"github.com/kevwargo/bbtr/internal/btrfs"
 )
 
 func Execute() error {

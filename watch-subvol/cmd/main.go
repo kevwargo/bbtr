@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/kevwargo/btrscr/watch-subvol/internal/watcher"
+	"github.com/kevwargo/bbtr/watch-subvol/internal/watcher"
 )
 
 func main() {

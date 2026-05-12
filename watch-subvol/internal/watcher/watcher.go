@@ -7,8 +7,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/kevwargo/btrscr/internal/btrfs"
-	"github.com/kevwargo/btrscr/internal/btrfs/stream"
+	"github.com/kevwargo/bbtr/internal/btrfs"
+	"github.com/kevwargo/bbtr/internal/btrfs/stream"
 )
 
 func Watch(subvol string) error {

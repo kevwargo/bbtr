@@ -1,4 +1,4 @@
-module github.com/kevwargo/btrscr
+module github.com/kevwargo/bbtr
 
 go 1.25.1
 
