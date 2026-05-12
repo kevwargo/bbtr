@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -115,12 +114,7 @@ func (s state) readCommand() (*Command, error) {
 		return &cmd, nil
 	}
 
-	payload := make([]byte, cmd.Length)
-	if _, err := io.ReadFull(s.r, payload); err != nil {
-		return nil, fmt.Errorf("reading command payload: %w", err)
-	}
-
-	ar := bytes.NewBuffer(payload)
+	ar := io.LimitReader(s.r, int64(cmd.Length))
 	for {
 		var attr Attribute
 		if err := binary.Read(ar, binary.LittleEndian, &attr.AttrHdr); err != nil {
