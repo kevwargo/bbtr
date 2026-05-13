@@ -23,7 +23,7 @@ func Watch(subvol string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "Snapshot %s created. Press Enter to check diff...", snapBefore)
-	os.Stdin.Read([]byte{0})
+	os.Stdin.Read([]byte{0}) //nolint:errcheck
 
 	snapAfter, err := s.BackupNow()
 	if err != nil {

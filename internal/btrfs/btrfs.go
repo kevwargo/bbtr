@@ -143,7 +143,7 @@ func OpenPool(dev, mountpoint string) (*Pool, error) {
 	}
 
 	if empty {
-		return nil, fmt.Errorf("Mountpoint %s does not contain valid snapshots", mountpoint)
+		return nil, fmt.Errorf("mountpoint %s does not contain valid snapshots", mountpoint)
 	}
 
 	success = true

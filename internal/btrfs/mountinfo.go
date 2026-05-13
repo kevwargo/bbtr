@@ -21,7 +21,7 @@ func readMountinfos() ([]mountinfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
