@@ -76,22 +76,24 @@ func OpenSubvol(subvolMountpoint string) (*Subvol, error) {
 		return nil, fmt.Errorf("root of %s is not mounted", subvolMountpoint)
 	}
 
-	return &Subvol{
+	s := &Subvol{
 		Path:    pool + subvolMountinfo.FSRoot,
 		Name:    subvolName,
 		snapDir: filepath.Join(pool, "s", subvolName),
-	}, nil
+	}
+	if err := s.readSnapshots(); err != nil {
+		return nil, err
+	}
+
+	return s, nil
 }
 
-func OpenPool(dev, mountpoint string) (*Pool, error) {
-	var (
-		p       = Pool{mountpoint: mountpoint}
-		empty   = true
-		success bool
-	)
+func OpenPool(dev, mountpoint string) (p *Pool, err error) {
+	p = &Pool{mountpoint: mountpoint}
+	empty := true
 
 	defer func() {
-		if !success {
+		if err != nil {
 			p.Close()
 		}
 	}()
@@ -109,31 +111,17 @@ func OpenPool(dev, mountpoint string) (*Pool, error) {
 
 	for _, e := range entries {
 		subvol := Subvol{
-			Name:          e.Name(),
-			Path:          filepath.Join(mountpoint, "@"+e.Name()),
-			SnapshotPaths: make(map[string]string),
+			Name: e.Name(),
+			Path: filepath.Join(mountpoint, "@"+e.Name()), // FIXME
 
 			snapDir: filepath.Join(snapDir, e.Name()),
 		}
 
-		snapEntries, err := os.ReadDir(subvol.snapDir)
-		if err != nil {
-			return nil, fmt.Errorf("listing dir %q: %w", subvol.snapDir, err)
+		if err := subvol.readSnapshots(); err != nil {
+			return nil, err
 		}
 
-		for _, se := range snapEntries {
-			snapName := se.Name()
-			snapPath := filepath.Join(subvol.snapDir, snapName)
-
-			if !isSubvol(snapPath) {
-				continue
-			}
-
-			if _, err := time.Parse(SnapshotFormat, snapName); err != nil {
-				continue
-			}
-
-			subvol.SnapshotPaths[snapName] = snapPath
+		if len(subvol.SnapshotPaths) > 0 {
 			empty = false
 		}
 
@@ -144,9 +132,7 @@ func OpenPool(dev, mountpoint string) (*Pool, error) {
 		return nil, fmt.Errorf("mountpoint %s does not contain valid snapshots", mountpoint)
 	}
 
-	success = true
-
-	return &p, nil
+	return p, nil
 }
 
 func (p *Pool) Close() {
@@ -177,7 +163,7 @@ func (p *Pool) Table() map[string][]string {
 	return table
 }
 
-func (s Subvol) Backup(snapName string) (string, error) {
+func (s *Subvol) Backup(snapName string) (string, error) {
 	path := filepath.Join(s.snapDir, snapName)
 	if err := runCmd("btrfs", "subvolume", "snapshot", "-r", s.Path, path); err != nil {
 		return "", err
@@ -186,11 +172,11 @@ func (s Subvol) Backup(snapName string) (string, error) {
 	return path, nil
 }
 
-func (s Subvol) BackupNow() (string, error) {
+func (s *Subvol) BackupNow() (string, error) {
 	return s.Backup(time.Now().UTC().Format(SnapshotFormat))
 }
 
-func (s Subvol) Restore(snapshot string) error {
+func (s *Subvol) Restore(snapshot string) error {
 	path, ok := s.SnapshotPaths[snapshot]
 	if !ok {
 		log.Printf("Ignoring restore request for non-existent snapshot %q for %s", snapshot, s.Name)
@@ -203,6 +189,32 @@ func (s Subvol) Restore(snapshot string) error {
 	}
 
 	return runCmd("btrfs", "subvolume", "snapshot", path, s.Path)
+}
+
+func (s *Subvol) readSnapshots() error {
+	snapEntries, err := os.ReadDir(s.snapDir)
+	if err != nil {
+		return fmt.Errorf("listing dir %q: %w", s.snapDir, err)
+	}
+
+	s.SnapshotPaths = make(map[string]string)
+
+	for _, se := range snapEntries {
+		snapName := se.Name()
+		snapPath := filepath.Join(s.snapDir, snapName)
+
+		if !isSubvol(snapPath) {
+			continue
+		}
+
+		if _, err := time.Parse(SnapshotFormat, snapName); err != nil {
+			continue
+		}
+
+		s.SnapshotPaths[snapName] = snapPath
+	}
+
+	return nil
 }
 
 func isSubvol(path string) bool {
