@@ -61,10 +61,8 @@ func OpenSubvol(subvolMountpoint string) (*Subvol, error) {
 	if subvolMountinfo == nil {
 		return nil, fmt.Errorf("%s is not a valid mountpoint", subvolMountpoint)
 	}
-	if !strings.HasPrefix(subvolMountinfo.FSRoot, "/@") {
-		return nil, fmt.Errorf("%s is not a conventional subvolume", subvolMountpoint)
-	}
-	subvolName := subvolMountinfo.FSRoot[2:]
+
+	subvolName := strings.TrimLeft(subvolMountinfo.FSRoot, "/@")
 
 	var pool string
 	for _, mi := range mountinfos {
